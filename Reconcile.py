@@ -5,6 +5,25 @@ import logging
 import tkinter as tk
 from tkinter import filedialog
 
+def createDictFromCsv(csvReaderFile, uniqueHeaderKey):
+    dict = {}
+    firstRow = []
+    nameIndex = 0
+    for i, row in enumerate(csvReaderFile):
+        if i == 0:
+            firstRow = row
+            nameIndex = firstRow.index(uniqueHeaderKey)
+        if i != 0:
+            name = row[nameIndex]
+            valueDict = {}
+            for y,value in enumerate(row):
+                if y != nameIndex:
+                    keyValuePair = {firstRow[y] : value}
+                    valueDict.update(keyValuePair)
+            dict[name] = valueDict
+    return dict
+
+
 # SELECT TEST MODE HERE
 TestMode = False
 
@@ -57,50 +76,38 @@ if newList == None:
     newList = filedialog.askopenfilename(title='Select the NEW list')
 
 # Open up files
-with open(oldList, mode='r') as old_file, open(newList, 'r') as new_file, open('Result.csv', 'w') as result_file:
-    csv_old = csv.DictReader(old_file)
-    csv_new = csv.DictReader(new_file)
-    firstLine = False
+with open(oldList, mode='r', encoding = 'utf-8-sig') as old_file, open(newList, 'r', encoding = 'utf-8-sig') as new_file, open('Result.csv', 'w', encoding = 'utf8') as result_file:
 
-# Evaluate price differences
-    for row_old in csv_old:  
-        found = False
-        if firstLine != True:
-            oldLabels = csv_old.fieldnames
-            newLabels = csv_new.fieldnames
-            result_file.write( f'{newLabels[0]},{newLabels[1]}')
-            firstLine = True
-        new_file.seek(0,0)
-        for row_new in csv_new:
-            if row_old[oldLabels[0]] == row_new[newLabels[0]]:
-                found = True
-                if row_old[oldLabels[1]] != row_new[newLabels[1]]:
-                    result_file.write( f'\n{row_old[oldLabels[0]]},{int(row_new[newLabels[1]])-int(row_old[oldLabels[1]])}')
-                    print("difference saved:",row_old[oldLabels[0]])
-                    logging.info(f'difference saved for: {row_old[oldLabels[0]]}')
-                else:                 
-                    print("no difference found:",row_old[oldLabels[0]])
-                    logging.info(f'no diffrerence found for: {row_old[oldLabels[0]]}')
-                           
-# Evaluate removals
-        if found != True: 
-            result_file.write( f'\n{row_old[oldLabels[0]]},Removed')
-            print("no entry found:",row_old[oldLabels[0]])   
-            logging.info(f'no entry found for: {row_old[oldLabels[0]]}')
+    # Create dictionaries from the csv file
+    csv_old_dict = createDictFromCsv(csv.reader(old_file, delimiter = ','), 'Name')
+    logging.info("Old dict: %s" % csv_old_dict)
+    csv_new_dict = createDictFromCsv(csv.reader(new_file, delimiter = ','), 'Name')
+    logging.info("New dict: %s "% csv_new_dict)
 
-# Find additions
-    new_file.seek(0,0)
-    for row_new in csv_new:
-        found = False
-        old_file.seek(0,0)
-        for row_old in csv_old:
-            if row_old[oldLabels[0]] == row_new[newLabels[0]]:
-                found = True
-# Log additions
-        if found != True: 
-            result_file.write( f'\n{row_new[newLabels[0]]},Added')
-            print("found as extra:",row_new[newLabels[0]]) 
-            logging.info(f'new entry found for: {row_new[newLabels[0]]}')  
+    # Get headers for the value columns 
+    valueKeys = csv_old_dict[list(csv_old_dict.keys())[0]].keys()
+    # Create name header (unique identifier)
+    result_file.write( f'Name')
+    # Create other headers
+    for key in valueKeys:
+        result_file.write( f',{key}')
+
+    # Define which items belong to which category (both lists, old list, new list)
+    itemsInBothLists = (item for item in csv_old_dict.keys() if item in csv_new_dict.keys())
+    itemsOnlyInOldList = (item for item in csv_old_dict.keys() if item not in csv_new_dict.keys())
+    itemsOnlyInNewList = (item for item in csv_new_dict.keys() if item not in csv_old_dict.keys())
+    
+    # Print items for each of the respective categories
+    for itemName in itemsInBothLists:
+        priceColumn = 'Price'
+        oldPrice = int(csv_old_dict.get(itemName, {}).get(priceColumn))
+        newPrice = int(csv_new_dict.get(itemName, {}).get(priceColumn))
+        if oldPrice != newPrice:
+            result_file.write( f'\n{itemName},{oldPrice-newPrice}')
+    for itemName in itemsOnlyInOldList:
+        result_file.write( f'\n{itemName},Removed')
+    for itemName in itemsOnlyInNewList:
+        result_file.write( f'\n{itemName},Added')   
 
 # Close files
 old_file.close()
